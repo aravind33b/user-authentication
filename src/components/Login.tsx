@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../supabaseClient'
+import { createClient } from '@supabase/supabase-js'
 
 export default function Auth() {
   const [loading, setLoading] = useState(false)
@@ -16,11 +17,14 @@ export default function Auth() {
     event.preventDefault()
 
     setLoading(true)
-    const { error } = await supabase.auth.signIn({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
 
     if (error) {
       alert(error.message)
-    } else {
+    } else if (data.user) {
       // Redirect based on user type
       const { data: userData, error: userError } = await supabase
         .from('users')
@@ -41,29 +45,44 @@ export default function Auth() {
     setLoading(false)
   }
 
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL!
+const supabaseServiceRoleKey = process.env.REACT_APP_SUPABASE_SERVICE_ROLE_KEY!
+
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceRoleKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false
+  }
+})
+
   const handleSignUp = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-
+  
     setLoading(true)
-    const { user, error } = await supabase.auth.signUp({ email, password })
-
+  const { data, error } = await supabaseAdmin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true
+  })
+  
     if (error) {
       alert(error.message)
-    } else if (user) {
+    } else if (data.user) {
       // Insert into users table
       const { data: userData, error: userError } = await supabase
         .from('users')
         .insert({
-          user_id: user.id,
+          user_id: data.user.id,
           email,
           username,
           is_individual: isIndividual,
         })
+        .select()
         .single()
-
+  
       if (userError) {
         alert(userError.message)
-      } else {
+      } else if (userData) {
         // Insert into individuals or companies table
         if (isIndividual) {
           const { error: individualError } = await supabase
@@ -73,7 +92,7 @@ export default function Auth() {
               first_name: firstName,
               last_name: lastName,
             })
-
+  
           if (individualError) alert(individualError.message)
           else window.location.href = '/individual-home'
         } else {
@@ -83,7 +102,7 @@ export default function Auth() {
               id: userData.id,
               company_name: companyName,
             })
-
+  
           if (companyError) alert(companyError.message)
           else window.location.href = '/company-home'
         }
